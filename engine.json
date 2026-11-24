@@ -1,0 +1,212 @@
+// Pathway costing engine. Pure functions, no DOM. Shared by the page and the test script.
+(function (root) {
+  'use strict';
+
+  function indexPrices(P, PB) {
+    const mbs = new Map(), hosp = new Map(), pbs = new Map();
+    if (PB) for (const r of PB.items) { const k = r[0] + '|' + r[1]; pbs.set(k, { code: r[0], prog: r[1], drug: r[2], form: r[3], maxqty: r[4], repeats: r[5], dpmq: r[6], basis: r[7], benefit: r[8] }); if (!pbs.has(r[0]) || r[1] === 'GE') pbs.set(r[0], pbs.get(k)); }
+    for (const r of P.mbs) mbs.set(r[0], { item: r[0], cat: r[1], group: r[2], fee: r[3], b75: r[4], b85: r[5], b100: r[6], derived: r[7], desc: r[8] });
+    for (const r of P.hosp) hosp.set(r[1], { stream: r[0], code: r[1], desc: r[2], weight: r[3], price: r[4], sdWeight: r[5], sdPrice: r[6], alos: r[7], paed: r[8] });
+    return { mbs, hosp, pbs, nep: P.nep, copay: PB ? { general: PB.copay_general, concessional: PB.copay_concessional } : null, programs: PB ? PB.programs : {} };
+  }
+
+  // Unit prices for one service, split by who pays.
+  // MBS: Medicare pays the benefit; the patient pays (schedule fee minus benefit) plus any gap above the schedule fee.
+  // Hospital: the National Efficient Price for the episode, funded by governments.
+  function unitPrice(step, I, pw) {
+    const p = step.price || {};
+    const gap = num(step.gap && step.gap.v);
+    if (p.type === 'mbs') {
+      const m = I.mbs.get(String(p.code));
+      if (!m) return { error: 'Item ' + p.code + ' is not in the current MBS file' };
+      if (m.fee == null) return { error: 'Item ' + p.code + ' has a derived fee; enter the amount as a manual price', ref: m };
+      let benefit, basis;
+      if (p.setting === 'in') { benefit = m.b75 != null ? m.b75 : m.b100; basis = '75% in-hospital benefit'; }
+      else if (m.b100 != null) { benefit = m.b100; basis = '100% benefit'; }
+      else if (m.b85 != null) { benefit = m.b85; basis = '85% out-of-hospital benefit'; }
+      else { benefit = m.b75; basis = '75% benefit (item has no out-of-hospital benefit)'; }
+      if (benefit == null) return { error: 'Item ' + p.code + ' has no benefit in the file' };
+      return { medicare: benefit, pbs: 0, patient: round2(m.fee - benefit) + gap, hospital: 0, other: 0, fee: m.fee, basis, ref: m };
+    }
+    if (p.type === 'hosp') {
+      const h = I.hosp.get(String(p.code));
+      if (!h) return { error: p.code + ' is not in the 2026–27 price weight tables' };
+      let w = h.weight, basis = 'inlier price weight';
+      if (p.basis === 'same_day') {
+        if (h.sdWeight == null) return { error: p.code + ' has no same-day price weight; use the inlier weight' };
+        w = h.sdWeight; basis = 'same-day price weight';
+      }
+      if (p.paed && h.paed) { w = w * h.paed; basis += ' × paediatric adjustment ' + h.paed; }
+      return { medicare: 0, pbs: 0, patient: gap, hospital: round2(w * I.nep), other: 0, weight: w, basis, ref: h };
+    }
+    if (p.type === 'pbs') {
+      const d = I.pbs.get(p.prog ? String(p.code) + '|' + p.prog : String(p.code));
+      if (!d) return { error: 'PBS item ' + p.code + ' is not in the current PBS file' };
+      const conc = pw && pw.copay === 'concessional';
+      const cp = I.copay ? (conc ? I.copay.concessional : I.copay.general) : 0;
+      const pat = Math.min(cp, d.dpmq);
+      return { medicare: 0, pbs: round2(d.dpmq - pat), patient: round2(pat) + gap, hospital: 0, other: 0, fee: d.dpmq,
+        basis: 'DPMQ ' + d.dpmq.toFixed(2) + ', ' + (conc ? 'concessional' : 'general') + ' co-payment ' + cp.toFixed(2) + (d.basis !== 'community' ? ' (ex-manufacturer price only)' : ''), ref: d };
+    }
+    if (p.type === 'manual') {
+      const a = num(p.amount);
+      return { medicare: 0, pbs: 0, patient: gap, hospital: 0, other: a, basis: 'manual amount', ref: null };
+    }
+    return { error: 'Step has no price' };
+  }
+
+  // Effective probability: the step's own probability times its parent's effective probability.
+  function effectiveProbs(steps, override) {
+    const byId = new Map(steps.map(s => [s.id, s]));
+    const memo = new Map();
+    function eff(id, seen) {
+      if (memo.has(id)) return memo.get(id);
+      const s = byId.get(id);
+      if (!s) return 0;
+      if (seen.has(id)) return 0; // cycle guard
+      seen.add(id);
+      const own = override && override.id === id && override.field === 'prob' ? override.value : num(s.prob && s.prob.v);
+      const par = s.parent && byId.has(s.parent) ? eff(s.parent, seen) : 1;
+      const v = own * par;
+      memo.set(id, v);
+      return v;
+    }
+    const out = new Map();
+    for (const s of steps) out.set(s.id, eff(s.id, new Set()));
+    return out;
+  }
+
+  function evaluate(pathway, I, override) {
+    const steps = pathway.steps || [];
+    const P = effectiveProbs(steps, override);
+    const rows = [];
+    const tot = { medicare: 0, pbs: 0, patient: 0, hospital: 0, other: 0, total: 0, estimateShare: 0 };
+    let onEstimate = 0;
+    for (const s of steps) {
+      const sOv = override && override.id === s.id ? override : null;
+      const sx = sOv && sOv.field === 'gap' ? Object.assign({}, s, { gap: Object.assign({}, s.gap, { v: sOv.value }) }) : s;
+      const u = unitPrice(sx, I, pathway);
+      const qty = sOv && sOv.field === 'qty' ? sOv.value : num(s.qty && s.qty.v, 1);
+      const p = P.get(s.id);
+      const row = { id: s.id, eff: p, qty, unit: u };
+      if (!u.error) {
+        const k = p * qty;
+        row.medicare = k * u.medicare; row.pbs = k * u.pbs; row.patient = k * u.patient; row.hospital = k * u.hospital; row.other = k * u.other;
+        row.total = row.medicare + row.pbs + row.patient + row.hospital + row.other;
+        for (const f of ['medicare', 'pbs', 'patient', 'hospital', 'other']) tot[f] += row[f];
+        if (restsOnEstimate(s, steps)) onEstimate += row.total;
+      } else { row.total = 0; }
+      rows.push(row);
+    }
+    tot.total = tot.medicare + tot.pbs + tot.patient + tot.hospital + tot.other;
+    tot.estimateShare = tot.total > 0 ? onEstimate / tot.total : 0;
+    return { rows, totals: tot };
+  }
+
+  // A step's cost rests on an estimate if its probability, quantity or any ancestor's probability is labelled an estimate.
+  function restsOnEstimate(s, steps) {
+    const byId = new Map(steps.map(x => [x.id, x]));
+    let cur = s, guard = 0;
+    if (s.qty && s.qty.ev === 'estimate' && num(s.qty.v, 1) !== 1) return true;
+    while (cur && guard++ < 50) {
+      if (cur.prob && cur.prob.ev === 'estimate' && num(cur.prob.v) < 1) return true;
+      cur = cur.parent ? byId.get(cur.parent) : null;
+    }
+    return false;
+  }
+
+  // One-way sensitivity: move each uncertain input to its low and high value, holding the rest at base.
+  function tornado(pathway, I) {
+    const base = evaluate(pathway, I).totals.total;
+    const out = [];
+    for (const s of pathway.steps || []) {
+      for (const field of ['prob', 'qty', 'gap']) {
+        const f = s[field];
+        if (!f) continue;
+        const lo = num(f.lo, null), hi = num(f.hi, null);
+        if (lo == null || hi == null || lo === hi) continue;
+        const tLo = evaluate(pathway, I, { id: s.id, field, value: lo }).totals.total;
+        const tHi = evaluate(pathway, I, { id: s.id, field, value: hi }).totals.total;
+        out.push({ id: s.id, label: s.label, field, lo, hi, tLo, tHi, swing: Math.abs(tHi - tLo) });
+      }
+    }
+    out.sort((a, b) => b.swing - a.swing);
+    return { base, bars: out };
+  }
+
+  // Checks run on any pathway, including one pasted in from an AI draft.
+  function validate(pathway, I) {
+    const issues = [];
+    const steps = pathway.steps || [];
+    const ids = new Set();
+    for (const s of steps) {
+      if (!s.id) issues.push({ level: 'error', msg: 'A step has no id' });
+      else if (ids.has(s.id)) issues.push({ level: 'error', msg: 'Duplicate step id ' + s.id });
+      ids.add(s.id);
+    }
+    for (const s of steps) {
+      const name = s.label || s.id;
+      if (s.parent && !ids.has(s.parent)) issues.push({ level: 'error', msg: name + ': parent step ' + s.parent + ' does not exist' });
+      const u = unitPrice(s, I, pathway);
+      if (u.error) issues.push({ level: 'error', msg: name + ': ' + u.error });
+      const p = num(s.prob && s.prob.v, NaN);
+      if (!(p >= 0 && p <= 1)) issues.push({ level: 'error', msg: name + ': probability must be between 0 and 1' });
+      for (const field of ['prob', 'qty', 'gap']) {
+        const f = s[field];
+        if (!f) continue;
+        if (!['sourced', 'data', 'estimate'].includes(f.ev)) issues.push({ level: 'warn', msg: name + ': ' + field + ' has no evidence label, treated as an estimate' });
+        if ((f.ev === 'sourced' || f.ev === 'data') && !String(f.ref || '').trim()) issues.push({ level: 'warn', msg: name + ': ' + field + ' is labelled ' + f.ev + ' but gives no reference' });
+        if (f.lo != null && f.hi != null && (num(f.lo) > num(f.v) || num(f.hi) < num(f.v))) issues.push({ level: 'warn', msg: name + ': ' + field + ' base value lies outside its low to high range' });
+      }
+      if (s.price && s.price.type === 'mbs' && s.price.setting === 'in' && steps.some(o => o.price && o.price.type === 'hosp' && (o.id === s.parent))) {
+        issues.push({ level: 'warn', msg: name + ': in-hospital MBS item under a public hospital episode. The NEP already covers public patients’ medical costs, so this may double count' });
+      }
+    }
+    return issues;
+  }
+
+
+  // Which kind of care a step is, for the breakdown.
+  function kindOf(step, I) {
+    const p = step.price || {};
+    if (p.type === 'pbs') return 'Medicines';
+    if (p.type === 'manual') return 'Other';
+    if (p.type === 'hosp') { const h = I.hosp.get(String(p.code)); if (!h) return 'Other'; return h.stream === 'Adm' ? 'Hospital stays' : h.stream === 'Eme' ? 'Emergency department' : 'Outpatient clinics'; }
+    if (p.type === 'mbs') { const m = I.mbs.get(String(p.code)); if (!m) return 'Other'; const c = String(m.cat);
+      return c === '1' ? 'Doctor visits' : (c === '2' || c === '5' || c === '6') ? 'Tests and scans' : c === '3' ? 'Procedures' : 'Other'; }
+    return 'Other';
+  }
+  function breakdown(pathway, I) {
+    const r = evaluate(pathway, I), byId = new Map((pathway.steps || []).map(s => [s.id, s])), out = new Map();
+    for (const row of r.rows) { const k = kindOf(byId.get(row.id), I); out.set(k, (out.get(k) || 0) + row.total); }
+    return [...out.entries()].filter(e => e[1] > 0).sort((a, b) => b[1] - a[1]);
+  }
+
+  // Likely range: sample every input with a low and high value from a triangular distribution and report percentiles.
+  function simulate(pathway, I, n, seed) {
+    let x = seed || 12345; const rnd = () => { x = (x * 1103515245 + 12345) % 2147483648; return x / 2147483648; };
+    const tri = (lo, mode, hi) => { if (!(hi > lo)) return mode; const u = rnd(), c = (mode - lo) / (hi - lo);
+      return u < c ? lo + Math.sqrt(u * (hi - lo) * (mode - lo)) : hi - Math.sqrt((1 - u) * (hi - lo) * (hi - mode)); };
+    const base = JSON.parse(JSON.stringify(pathway)), totals = [];
+    for (let i = 0; i < (n || 600); i++) {
+      for (let j = 0; j < base.steps.length; j++) {
+        const src = pathway.steps[j], dst = base.steps[j];
+        for (const f of ['prob', 'qty', 'gap']) {
+          const o = src[f]; if (!o) continue;
+          const v = num(o.v), lo = num(o.lo, v), hi = num(o.hi, v);
+          dst[f].v = tri(Math.min(lo, v), v, Math.max(hi, v));
+        }
+      }
+      totals.push(evaluate(base, I).totals.total);
+    }
+    totals.sort((a, b) => a - b);
+    const q = p => totals[Math.min(totals.length - 1, Math.floor(p * totals.length))];
+    return { p10: q(0.1), p50: q(0.5), p90: q(0.9) };
+  }
+
+  function num(v, d) { const n = typeof v === 'number' ? v : parseFloat(v); return isFinite(n) ? n : (d === undefined ? 0 : d); }
+  function round2(x) { return Math.round(x * 100) / 100; }
+
+  const api = { indexPrices, unitPrice, effectiveProbs, evaluate, tornado, validate, kindOf, breakdown, simulate };
+  if (typeof module !== 'undefined') module.exports = api; else root.Engine = api;
+})(this);
