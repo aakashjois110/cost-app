@@ -1,0 +1,651 @@
+<!DOCTYPE html>
+<html lang="en-AU">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Care Pathway Costing</title>
+<style>
+:root {
+  --bg: #ffffff; --surface: #ffffff; --ink: #1d1d1f; --muted: #666b70; --line: #d9dcdf; --soft: #f4f5f6; --link: #1a5fb4;
+  --medicare: #2f6fb0; --pbs: #3c8c4a; --patient: #d08a1e; --hospital: #7a5aa8; --other: #9aa0a6; --good: #2e7d32; --warn: #b26a00; --bad: #c62828;
+  color-scheme: light;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body { background: var(--bg); color: var(--ink); font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+a { color: var(--link); }
+h1, h2, h3 { margin: 0; font-weight: 600; }
+h1 { font-size: 26px; line-height: 1.25; }
+h2 { font-size: 19px; }
+h3 { font-size: 16px; }
+p { margin: 0; }
+.muted { color: var(--muted); }
+.small { font-size: 13px; }
+.num { font-variant-numeric: tabular-nums; }
+button, input, select, textarea { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--link); outline-offset: 1px; }
+
+.bar { border-bottom: 1px solid var(--line); background: var(--soft); }
+.bar .in { max-width: 1080px; margin: 0 auto; padding: 0 16px; display: flex; align-items: center; gap: 20px; height: 48px; }
+.brand { font-weight: 600; white-space: nowrap; }
+nav { display: flex; gap: 16px; }
+nav a { text-decoration: none; color: var(--link); padding: 4px 0; }
+nav a[aria-current="page"] { color: var(--ink); font-weight: 600; border-bottom: 2px solid var(--ink); }
+.bar .ver { margin-left: auto; font-size: 12px; color: var(--muted); white-space: nowrap; }
+@media (max-width: 760px) { .bar .ver { display: none; } }
+
+main { max-width: 1080px; margin: 0 auto; padding: 24px 16px 60px; }
+.view { display: none; gap: 24px; }
+.view.on { display: grid; }
+.lede { max-width: 70ch; color: var(--muted); }
+
+.btn { cursor: pointer; border: 1px solid #1a5fb4; background: #1a5fb4; color: #fff; border-radius: 4px; padding: 6px 12px; }
+.btn.quiet, .btn.plain { border-color: #b9bec3; background: #fff; color: var(--ink); }
+.btn:hover { filter: brightness(0.95); }
+.btn:disabled { opacity: 0.5; cursor: default; }
+.linkbtn { border: none; background: none; color: var(--link); cursor: pointer; padding: 0; text-decoration: underline; }
+input[type=text], input[type=number], input[type=search], select, textarea { background: #fff; border: 1px solid #b9bec3; border-radius: 4px; padding: 5px 8px; }
+textarea { width: 100%; font-family: Menlo, Consolas, monospace; font-size: 12.5px; }
+
+.search { display: grid; gap: 10px; }
+.searchrow { display: grid; grid-template-columns: 1fr auto auto; gap: 10px; align-items: center; }
+.search input[type=search] { font-size: 16px; padding: 8px 10px; width: 100%; }
+@media (max-width: 760px) { .searchrow { grid-template-columns: 1fr; } }
+.listhead { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+.clist { border: 1px solid var(--line); border-radius: 4px; }
+.crow { display: grid; grid-template-columns: minmax(0, 1fr) 110px 130px 110px; gap: 14px; align-items: center; width: 100%; text-align: left; padding: 9px 12px; border: 0; border-top: 1px solid var(--line); background: none; cursor: pointer; font: inherit; }
+.crow:first-child { border-top: 0; }
+.crow:hover { background: #eef4fb; }
+.crow .nm { color: var(--link); }
+.crow .nm small { display: block; color: var(--muted); font-size: 12.5px; }
+.crow .cost { font-variant-numeric: tabular-nums; text-align: right; }
+.crow .scale { height: 6px; background: var(--soft); position: relative; }
+.crow .scale i { position: absolute; left: 0; top: 0; bottom: 0; background: #9aa7b4; }
+.colhead { display: grid; grid-template-columns: minmax(0, 1fr) 110px 130px 110px; gap: 14px; padding: 6px 12px; font-size: 12.5px; color: var(--muted); border-bottom: 1px solid var(--line); background: var(--soft); }
+.colhead .r { text-align: right; }
+.split { display: flex; height: 8px; overflow: hidden; background: var(--line); }
+.split span { display: block; height: 100%; }
+.groupname { padding: 10px 12px 4px; font-weight: 600; border-top: 1px solid var(--line); background: var(--soft); font-size: 14px; }
+.groupname:first-child { border-top: 0; }
+@media (max-width: 760px) { .crow, .colhead { grid-template-columns: minmax(0, 1fr) 90px; } .crow .scale, .crow .split, .colhead .h3, .colhead .h4 { display: none; } }
+.draftbox { border: 1px solid var(--line); border-radius: 4px; padding: 16px; display: grid; gap: 12px; background: var(--soft); }
+.draftgrid { display: grid; grid-template-columns: 2fr 2fr 1.4fr auto; gap: 10px; align-items: end; }
+.draftgrid label { display: grid; gap: 3px; font-size: 13px; }
+.draftgrid input { width: 100%; }
+@media (max-width: 860px) { .draftgrid { grid-template-columns: 1fr; } }
+.status { font-size: 14px; color: var(--muted); min-height: 1.4em; }
+.status.bad { color: var(--bad); }
+.progress { height: 3px; background: var(--line); overflow: hidden; }
+.progress i { display: block; height: 100%; width: 30%; background: var(--link); animation: slide 1.4s ease-in-out infinite; }
+@keyframes slide { from { transform: translateX(-100%); } to { transform: translateX(340%); } }
+@media (prefers-reduced-motion: reduce) { .progress i { animation: none; width: 100%; opacity: 0.4; } }
+.saved .crow { grid-template-columns: minmax(0, 1fr) 110px auto; cursor: default; }
+
+.crumb { font-size: 14px; }
+.phead { display: grid; gap: 6px; }
+.phead .meta { color: var(--muted); }
+.chips { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 13px; color: var(--muted); }
+.chip.warn { color: var(--warn); }
+.chip.bad { color: var(--bad); }
+.chip.good { color: var(--good); }
+.headline { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr); gap: 16px; }
+@media (max-width: 860px) { .headline { grid-template-columns: 1fr; } }
+.card { border: 1px solid var(--line); border-radius: 4px; padding: 14px 16px; display: grid; gap: 10px; align-content: start; min-width: 0; }
+.big { font-size: 34px; font-weight: 600; font-variant-numeric: tabular-nums; line-height: 1.1; }
+.range { font-size: 14px; color: var(--muted); }
+.payers { display: grid; gap: 6px; }
+.payer { display: grid; grid-template-columns: 12px minmax(0, 1fr) auto 48px; gap: 8px; align-items: center; font-size: 14px; }
+.payer .sw { width: 12px; height: 12px; }
+.payer .pc { color: var(--muted); text-align: right; font-size: 13px; }
+.kinds { display: grid; gap: 7px; }
+.kind { display: grid; grid-template-columns: 180px minmax(0, 1fr) 90px; gap: 10px; align-items: center; font-size: 14px; }
+.kind .track { height: 10px; background: var(--soft); }
+.kind .track i { display: block; height: 100%; }
+@media (max-width: 600px) { .kind { grid-template-columns: 1fr 90px; } .kind .track { grid-column: 1 / -1; order: 3; } }
+.drivers { display: grid; gap: 4px; margin: 0; padding-left: 18px; font-size: 14px; }
+.two { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; }
+@media (max-width: 860px) { .two { grid-template-columns: 1fr; } }
+svg text { fill: var(--muted); font: 11.5px -apple-system, "Segoe UI", Roboto, Arial, sans-serif; }
+
+.steps { border: 1px solid var(--line); border-radius: 4px; }
+.step { border-top: 1px solid var(--line); }
+.step:first-child { border-top: 0; }
+.stephead { display: grid; grid-template-columns: minmax(0, 1fr) 200px 100px 20px; gap: 12px; align-items: center; width: 100%; text-align: left; padding: 9px 12px; border: 0; background: none; cursor: pointer; font: inherit; }
+.stephead:hover { background: var(--soft); }
+.stephead .lab { display: flex; gap: 8px; align-items: baseline; min-width: 0; }
+.stephead .lab .n { display: block; color: var(--muted); font-size: 12.5px; }
+.stephead .who { font-size: 13px; color: var(--muted); }
+.stephead .ec { text-align: right; font-variant-numeric: tabular-nums; }
+.stephead .chev { color: var(--muted); text-align: center; }
+.dot { width: 8px; height: 8px; flex: none; transform: translateY(-1px); }
+.step.err .stephead { background: #fdecea; }
+.indent { display: inline-block; flex: none; }
+@media (max-width: 760px) { .stephead { grid-template-columns: minmax(0, 1fr) 80px 16px; } .stephead .who { display: none; } }
+.editor { padding: 10px 12px 14px; display: grid; gap: 12px; background: var(--soft); border-top: 1px solid var(--line); }
+.fields { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+@media (max-width: 860px) { .fields { grid-template-columns: 1fr; } }
+.fset { border: 1px solid var(--line); background: #fff; border-radius: 4px; padding: 8px 10px; display: grid; gap: 6px; margin: 0; }
+.fset legend { font-size: 13px; font-weight: 600; padding: 0 4px; }
+.trio { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+.trio label, .fset label { display: grid; gap: 2px; font-size: 12px; color: var(--muted); }
+.trio input { width: 100%; }
+.fset input[type=text] { width: 100%; }
+.pricebox { font-size: 13.5px; }
+.pricebox .desc { display: block; margin-top: 3px; color: var(--muted); font-size: 12.5px; max-width: 95ch; }
+.pricebox label { display: grid; gap: 3px; font-size: 12.5px; color: var(--muted); margin-top: 6px; max-width: 360px; }
+.row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.err { color: var(--bad); }
+.addbox { display: grid; gap: 8px; }
+.addrow { display: grid; grid-template-columns: 1fr auto; gap: 10px; }
+.addrow input { width: 100%; }
+.results { border: 1px solid var(--line); max-height: 320px; overflow-y: auto; }
+.results:empty { display: none; }
+.res { display: grid; grid-template-columns: 96px minmax(0, 1fr) 80px auto; gap: 10px; padding: 6px 10px; border-top: 1px solid var(--line); align-items: center; font-size: 13.5px; }
+.res:first-child { border-top: 0; }
+.res .c { font-size: 12.5px; color: var(--muted); }
+.res .p { text-align: right; font-variant-numeric: tabular-nums; }
+.res .k { color: var(--muted); font-size: 12px; }
+@media (max-width: 700px) { .res { grid-template-columns: 1fr auto; } .res .c, .res .p { display: none; } }
+details.adv summary { cursor: pointer; }
+.toast { font-size: 13.5px; color: var(--good); min-height: 1.4em; }
+.empty { padding: 30px 16px; text-align: center; color: var(--muted); }
+
+.prose { max-width: 72ch; display: grid; gap: 10px; }
+.prose h2 { margin-top: 10px; }
+.prose ul { margin: 0; padding-left: 20px; display: grid; gap: 4px; }
+table.src { border-collapse: collapse; width: 100%; font-size: 14px; }
+table.src th, table.src td { text-align: left; padding: 6px 10px; border: 1px solid var(--line); vertical-align: top; }
+table.src th { background: var(--soft); font-weight: 600; }
+.tablewrap { overflow-x: auto; }
+</style>
+</head>
+<body>
+<div class="bar"><div class="in">
+  <div class="brand">Condition Cost Calculator</div>
+  <nav aria-label="Pages">
+    <a href="#heart" data-view="heart">Heart</a>
+    <a href="#neurology" data-view="neurology">Neurology</a>
+    <a href="#pathway" data-view="pathway">Pathway</a>
+    <a href="#method" data-view="method">How it works</a>
+  </nav>
+  <div class="ver" id="ver"></div>
+</div></div>
+
+<main>
+  <section class="view" id="v-conditions" aria-labelledby="h-cond">
+    <div class="search">
+      <h1 id="h-cond"></h1>
+      <p class="lede" id="lede"></p>
+      <div class="searchrow">
+        <input id="q" type="search" placeholder="Search" aria-label="Search conditions" autocomplete="off">
+        <select id="catsel" aria-label="Category"></select>
+        <select id="sort" aria-label="Sort"><option value="cat">Sort by category</option><option value="desc">Most expensive first</option><option value="asc">Cheapest first</option><option value="az">A to Z</option></select>
+      </div>
+    </div>
+    <span class="small muted" id="count"></span>
+    <div class="clist" id="clist"></div>
+
+    <div class="draftbox">
+      <h2>Can't find it?</h2>
+      <p class="small" style="max-width:72ch">Start a blank pathway and add the steps yourself from the MBS, PBS and hospital price lists.</p>
+      <div><button class="btn" id="blank">Start a blank pathway</button></div>
+    </div>
+
+    <div id="savedwrap" hidden>
+      <h2 style="margin-bottom:4px">Saved pathways</h2>
+      <p class="small muted" style="margin-bottom:8px">Only saved on this browser.</p>
+      <div class="clist saved" id="saved"></div>
+    </div>
+  </section>
+
+  <section class="view" id="v-pathway" aria-labelledby="pname">
+    <div class="crumb"><a href="#heart" id="backlink">← Back to conditions</a></div>
+    <div id="pathway-empty" class="empty" hidden>Nothing open yet. Pick a condition from <a href="#heart">Heart</a> or <a href="#neurology">Neurology</a>.</div>
+    <div id="pathway-body" style="display:grid;gap:22px">
+      <div class="phead">
+        <h1 id="pname"></h1>
+        <p class="meta" id="pmeta"></p>
+        <p id="psum" style="max-width:75ch"></p>
+        <div class="chips" id="pchips"></div>
+      </div>
+
+      <div class="headline">
+        <div class="card">
+          <span class="small muted">Cost per patient</span>
+          <span class="big" id="ptotal"></span>
+          <span class="range" id="prange"></span>
+        </div>
+        <div class="card">
+          <span class="small muted">Who pays</span>
+          <div class="split" id="psplit" aria-hidden="true" style="height:12px"></div>
+          <div class="payers" id="payers"></div>
+        </div>
+      </div>
+
+      <div class="two">
+        <div class="card">
+          <h3>Breakdown</h3>
+          <div class="kinds" id="kinds"></div>
+        </div>
+        <div class="card">
+          <h3>Biggest drivers</h3>
+          <ul class="drivers" id="drivers"></ul>
+          <div id="tornado"></div>
+        </div>
+      </div>
+
+      <div style="display:grid;gap:10px">
+        <div class="listhead"><h2>Steps</h2><span class="small muted">% is out of all patients. Click a step to edit it.</span></div>
+        <div class="steps" id="steps"></div>
+        <div class="addbox card">
+          <h3>Add a step</h3>
+          <div class="addrow">
+            <input id="addq" type="search" placeholder="Search MBS items, PBS medicines or hospital codes (e.g. echo, apixaban, F62B)" aria-label="Search services">
+            <label class="small muted">After <select id="addparent"></select></label>
+          </div>
+          <div class="results" id="results"></div>
+          <div><button class="linkbtn" id="addmanual">Add something that isn't in the price lists</button></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>Settings</h3>
+        <div class="fields">
+          <label class="small muted" style="display:grid;gap:3px">Name <input type="text" id="setname"></label>
+          <label class="small muted" style="display:grid;gap:3px">Patients <input type="text" id="setpop"></label>
+          <label class="small muted" style="display:grid;gap:3px">Time period <input type="text" id="sethor"></label>
+          <label class="small muted" style="display:grid;gap:3px">PBS co-payment <select id="setcopay"><option value="general">General ($25.00)</option><option value="concessional">Concession ($7.70)</option></select></label>
+        </div>
+        <div class="row">
+          <button class="btn" id="save">Save</button>
+          <button class="btn plain" id="copysum">Copy summary</button>
+          <button class="btn plain" id="copytable">Copy table</button>
+          <button class="btn plain" id="copycheck">Copy checklist</button>
+          <button class="btn plain" id="revert" hidden>Reset to original</button>
+        </div>
+        <div class="toast" id="toast" role="status"></div>
+        <details class="adv">
+          <summary>Import / export (JSON)</summary>
+          <p class="small muted" style="margin:6px 0">Copy this to share a pathway, or paste one in and press Load.</p>
+          <textarea id="json" rows="8" spellcheck="false" aria-label="Pathway JSON"></textarea>
+          <div class="row" style="margin-top:6px"><button class="btn plain" id="copyjson">Copy</button><button class="btn plain" id="loadjson">Load</button></div>
+        </details>
+      </div>
+    </div>
+  </section>
+
+  <section class="view" id="v-method" aria-labelledby="h-method">
+    <div class="prose">
+      <h1 id="h-method">How it works</h1>
+      <p>Each condition is a list of steps, like a GP visit, an echo, a hospital stay or a medicine. Every step has a price, the % of patients who get it, and how many times they get it.</p>
+      <p><strong>Cost per patient</strong> = for each step, % of patients × number of times × price, all added up.</p>
+      <p>Some steps only happen after another step. For example, if 60% of patients see a cardiologist and half of those get a CT, then 30% of all patients get a CT.</p>
+      <p><strong>Range:</strong> every number has a low and high guess. The page runs 600 random combinations of these and shows the middle 80% of results.</p>
+      <h2>Where the prices come from</h2>
+      <div class="tablewrap"><table class="src" id="srctable"></table></div>
+      <ul>
+        <li><strong>MBS</strong> (doctors, tests, scans): Medicare pays the rebate in the MBS file (100% for GP visits, 85% for most other things out of hospital). The patient pays the rest plus any gap the doctor charges.</li>
+        <li><strong>PBS</strong> (medicines): price per script worked out from the PBS files (cheapest brand plus wholesale, pharmacy and dispensing fees). I checked two against pbs.gov.au and they matched (apixaban 5 mg $53.79, levetiracetam 500 mg $26.83). The patient pays $25 (or $7.70 with a concession card) and the PBS pays the rest.</li>
+        <li><strong>Public hospital</strong> (admissions, ED, clinics): IHACPA price weight × $7,418. This already covers doctors, nurses and medicines in hospital.</li>
+      </ul>
+      <h2>What's not included</h2>
+      <p>Allied health, ambulance, private hospital costs, non-PBS medicines, the PBS Safety Net, brand premiums, patients' time and travel, and most of the hospital price adjustments (except the paediatric one, which you can turn on).</p>
+      <h2>How accurate is it?</h2>
+      <p>The heart list has 52 conditions plus one device scenario, and the neurology list has 53, covering adults and children. The prices are real. The % of patients and number of times for each step are estimates based on general knowledge of Australian practice, and haven't been checked against guidelines or Medicare data yet. Each pathway shows how much of its cost depends on these estimates. Use "Copy checklist" to go through them against proper sources.</p>
+    </div>
+  </section>
+</main>
+
+<script src="engine.js"></script>
+<script>
+'use strict';
+let I = null, HEART = [], heartCost = new Map(), DATA = {}, SPEC = 'heart', PW = null, ORIGIN = null, openRows = new Set(), catFilter = 'All';
+let mbs = [], pbsList = [], hosp = [];
+const $ = id => document.getElementById(id);
+const aud = v => (v < 0 ? '−' : '') + '$' + Math.abs(v).toLocaleString('en-AU', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const aud0 = v => '$' + Math.round(v).toLocaleString('en-AU');
+const pctTxt = v => { const x = v * 100; return (x > 0 && x < 1 ? x.toFixed(1) : Math.round(x)) + '%'; };
+const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const PAYERS = [['medicare', 'Medicare'], ['pbs', 'PBS'], ['patient', 'Patient'], ['hospital', 'Public hospital'], ['other', 'Other']];
+const clone = o => JSON.parse(JSON.stringify(o));
+const reduceMotion = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+/* ---------- Routing ---------- */
+const SPECS = {
+  heart: { title: 'How much does each heart condition cost?', noun: 'heart conditions', search: 'Search (e.g. heart failure, AF, valve, child)', dx: 'e.g. Takotsubo cardiomyopathy' },
+  neurology: { title: 'How much does each neurological condition cost?', noun: 'neurological conditions (adults and children)', search: 'Search (e.g. epilepsy, stroke, MS, child)', dx: 'e.g. neurofibromatosis type 1' }
+};
+const VIEWS = ['heart', 'neurology', 'pathway', 'method'];
+function setSpec(sp) {
+  if (SPEC === sp && HEART.length) return;
+  SPEC = sp; HEART = DATA[sp] || []; catFilter = 'All'; $('q').value = '';
+  const S = SPECS[sp];
+  $('h-cond').textContent = S.title;
+  $('lede').textContent = `Estimated cost per patient for ${HEART.length} ${S.noun} in Australia, using real MBS, PBS and public hospital prices. Click a condition to see the steps of care and change the numbers.`;
+  $('q').placeholder = S.search; 
+  renderCats(); renderConditions();
+}
+function route() {
+  let v = location.hash.slice(1); if (v === 'conditions') v = 'heart';
+  if (!VIEWS.includes(v)) v = 'heart';
+  if (v === 'heart' || v === 'neurology') setSpec(v);
+  for (const x of ['conditions', 'pathway', 'method']) $('v-' + x).classList.toggle('on', x === (v === 'heart' || v === 'neurology' ? 'conditions' : v));
+  document.querySelectorAll('nav a').forEach(a => { if (a.dataset.view === v) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current'); });
+  if (v === 'pathway') renderPathway();
+  window.scrollTo(0, 0);
+}
+window.addEventListener('hashchange', route);
+function go(v) { if (location.hash === '#' + v) route(); else location.hash = v; }
+
+/* ---------- Storage ---------- */
+const store = { get(k, d) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch (e) { return d; } }, set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} } };
+function saveCurrent() { store.set('pc-current-v2', { pw: PW, origin: ORIGIN }); }
+function libList() { return store.get('pc-library-v2', []); }
+function libPut(pw) { const l = libList().filter(x => x.name !== pw.name); l.unshift(clone(pw)); store.set('pc-library-v2', l.slice(0, 50)); }
+
+/* ---------- Conditions view ---------- */
+function computeHeart() { heartCost = new Map(); for (const sp in DATA) for (const c of DATA[sp]) heartCost.set(sp + ':' + c.id, Engine.evaluate(c.pathway, I).totals); }
+const costOf = c => heartCost.get(SPEC + ':' + c.id);
+function splitBar(t) { return PAYERS.map(([k]) => t.total > 0 && t[k] > 0 ? `<span style="width:${(t[k] / t.total * 100).toFixed(1)}%;background:var(--${k})" title="${k}"></span>` : '').join(''); }
+function renderCats() {
+  const cats = ['All', ...new Set(HEART.map(c => c.category))];
+  $('catsel').innerHTML = cats.map(c => `<option value="${esc(c)}" ${c === catFilter ? 'selected' : ''}>${c === 'All' ? 'All categories' : esc(c)}</option>`).join('');
+}
+function renderConditions() {
+  const q = $('q').value.trim().toLowerCase(), sort = $('sort').value;
+  const words = q.split(/\s+/).filter(Boolean);
+  const alias = { af: ['atrial fibrillation'], hf: ['heart failure'], mi: ['myocardial infarction'], svt: ['supraventricular'], vt: ['ventricular tachycardia'], pe: ['pulmonary embolism'], dvt: ['deep vein'], aaa: ['aortic aneurysm'], htn: ['hypertension'], cad: ['coronary artery disease'], acs: ['myocardial infarction', 'unstable angina'], chd: ['congenital'], hcm: ['hypertrophic'], dcm: ['dilated'] , ms: ['multiple sclerosis'], mnd: ['motor neurone'], als: ['motor neurone'], ich: ['intracerebral'], sah: ['subarachnoid'], gbs: ['guillain'], cidp: ['demyelinating polyneuropathy'], pd: ['parkinson'], adhd: ['adhd'], asd: ['autism'], cp: ['cerebral palsy'], tbi: ['traumatic brain'], fnd: ['functional neurological'], iih: ['intracranial hypertension'], sma: ['spinal muscular'], dmd: ['duchenne'], hie: ['hypoxic'], mg: ['myasthenia'], tia: ['transient ischaemic'] };
+  const hay = c => (c.name + ' ' + c.category + ' ' + c.pathway.population + ' ' + c.pathway.summary).toLowerCase();
+  const hit = (h, w) => alias[w] ? (new RegExp('\\b' + w + '\\b').test(h) || alias[w].some(a => h.includes(a))) : w.length <= 3 ? new RegExp('\\b' + w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).test(h) : h.includes(w);
+  let list = HEART.filter(c => (catFilter === 'All' || c.category === catFilter) && words.every(w => hit(hay(c), w)));
+  const max = Math.max(...HEART.map(c => costOf(c).total));
+  const scale = v => Math.max(2, Math.log10(Math.max(v, 100)) - 2) / (Math.log10(max) - 2) * 100;
+  const row = c => { const t = costOf(c);
+    return `<button class="crow" data-open="${esc(c.id)}"><span class="nm">${esc(c.name)}<small>${esc(c.pathway.horizon)}</small></span><span class="cost">${aud0(t.total)}</span><span class="scale" title="Compared with the other conditions (log scale)"><i style="width:${scale(t.total).toFixed(1)}%"></i></span><span class="split" title="Who pays">${splitBar(t)}</span></button>`; };
+  const head = '<div class="colhead"><span>Condition</span><span class="r">Cost</span><span class="h3">Compared</span><span class="h4">Who pays</span></div>';
+  let h = '';
+  if (!list.length) h = `<div class="empty">Nothing matches “${esc(q)}”. Try other words, or start a blank pathway below.</div>`;
+  else if (sort === 'cat' && !q) { const cats = [...new Set(list.map(c => c.category))]; h = head + cats.map(cat => `<div class="groupname">${esc(cat)}</div>` + list.filter(c => c.category === cat).map(row).join('')).join(''); }
+  else {
+    const L = list.slice();
+    if (sort === 'desc' || (sort === 'cat' && q)) L.sort((a, b) => costOf(b).total - costOf(a).total);
+    if (sort === 'asc') L.sort((a, b) => costOf(a).total - costOf(b).total);
+    if (sort === 'az') L.sort((a, b) => a.name.localeCompare(b.name));
+    h = head + L.map(row).join('');
+  }
+  $('clist').innerHTML = h;
+  $('count').textContent = list.length === HEART.length ? `${HEART.length} conditions` : `Showing ${list.length} of ${HEART.length}`;
+  renderSaved();
+}
+function renderSaved() {
+  const l = libList();
+  $('savedwrap').hidden = !l.length;
+  $('saved').innerHTML = l.map((p, i) => { const t = Engine.evaluate(p, I).totals;
+    return `<div class="crow" style="cursor:default"><button class="linkbtn nm" data-saved="${i}" style="text-align:left;color:var(--ink)">${esc(p.name)}<small>${esc(p.horizon || '')}</small></button><span class="cost">${aud0(t.total)}</span><button class="linkbtn" data-unsave="${i}">Remove</button></div>`; }).join('');
+}
+$('q').addEventListener('input', renderConditions);
+$('sort').addEventListener('change', renderConditions);
+$('catsel').addEventListener('change', e => { catFilter = e.target.value; renderConditions(); });
+$('clist').addEventListener('click', e => { const b = e.target.closest('[data-open]'); if (!b) return; const c = HEART.find(x => x.id === b.dataset.open); openPathway(clone(c.pathway), { type: 'library', spec: SPEC, id: c.id }); });
+$('saved').addEventListener('click', e => {
+  const o = e.target.closest('[data-saved]'), u = e.target.closest('[data-unsave]');
+  if (o) { const p = libList()[+o.dataset.saved]; if (p) openPathway(clone(p), { type: 'saved' }); }
+  if (u) { const l = libList(); l.splice(+u.dataset.unsave, 1); store.set('pc-library-v2', l); renderSaved(); }
+});
+$('blank').addEventListener('click', () => openPathway({ name: 'New pathway', population: '', horizon: '12 months', summary: '', copay: 'general', steps: [] }, { type: 'blank' }));
+
+function openPathway(pw, origin) { PW = pw; ORIGIN = origin; openRows = new Set(); saveCurrent(); go('pathway'); }
+
+/* ---------- Pathway view ---------- */
+const EVLAB = { sourced: 'sourced', data: 'data', estimate: 'estimate' };
+function depthOf(s, byId) { let d = 0, c = s, g = 0; while (c && c.parent && byId.has(c.parent) && g++ < 30) { d++; c = byId.get(c.parent); } return d; }
+function ordered() {
+  const steps = PW.steps, ids = new Set(steps.map(s => s.id)), kids = new Map(), out = [];
+  for (const s of steps) { const p = s.parent && ids.has(s.parent) ? s.parent : null; if (!kids.has(p)) kids.set(p, []); kids.get(p).push(s); }
+  (function walk(p, seen) { for (const s of kids.get(p) || []) { if (seen.has(s.id)) continue; seen.add(s.id); out.push(s); walk(s.id, seen); } })(null, new Set());
+  for (const s of steps) if (!out.includes(s)) out.push(s);
+  return out;
+}
+function kindColour(k) { return { 'Hospital stays': 'var(--hospital)', 'Emergency department': 'var(--hospital)', 'Outpatient clinics': 'var(--hospital)', 'Medicines': 'var(--pbs)', 'Doctor visits': 'var(--medicare)', 'Tests and scans': 'var(--medicare)', 'Procedures': 'var(--medicare)' }[k] || 'var(--other)'; }
+function codeLabel(s) {
+  const p = s.price || {};
+  if (p.type === 'mbs') return 'MBS ' + p.code;
+  if (p.type === 'pbs') return 'PBS ' + p.code;
+  if (p.type === 'hosp') return p.code + (p.basis === 'same_day' ? ' same day' : '');
+  return 'Manual';
+}
+
+function renderPathway() {
+  if (!PW) { $('pathway-empty').hidden = false; $('pathway-body').hidden = true; return; }
+  $('pathway-empty').hidden = true; $('pathway-body').hidden = false;
+  const back = ORIGIN && ORIGIN.spec === 'neurology' ? 'neurology' : 'heart'; $('backlink').href = '#' + back; $('backlink').textContent = '← Back to ' + (back === 'heart' ? 'heart' : 'neurology') + ' conditions';
+  const r = Engine.evaluate(PW, I), T = r.totals, byRow = new Map(r.rows.map(x => [x.id, x])), byId = new Map(PW.steps.map(s => [s.id, s]));
+  $('pname').textContent = PW.name || 'Untitled pathway';
+  $('pmeta').textContent = [PW.population, PW.horizon].filter(Boolean).join(' · ');
+  $('psum').textContent = PW.summary || '';
+  const errs = Engine.validate(PW, I).filter(i => i.level === 'error');
+  const chips = [];
+  chips.push(errs.length ? `<span class="chip bad" title="${esc(errs.map(e => e.msg).join('\n'))}">${errs.length} invalid code${errs.length > 1 ? 's' : ''} (shown in red below)</span>` : PW.steps.length ? '<span class="chip good">All codes valid</span>' : '');
+  if (PW.steps.length) chips.push(`<span class="chip ${T.estimateShare > 0.5 ? 'warn' : 'good'}">${pctTxt(T.estimateShare)} of the cost is based on estimates</span>`);
+  $('pchips').innerHTML = chips.join('');
+  $('ptotal').textContent = aud0(T.total);
+  if (PW.steps.length) { const s = Engine.simulate(PW, I, 600); $('prange').textContent = `Range: ${aud0(s.p10)} to ${aud0(s.p90)}`; } else $('prange').textContent = 'Add some steps to see a cost.';
+  $('psplit').innerHTML = splitBar(T);
+  $('payers').innerHTML = PAYERS.filter(([k]) => T[k] > 0.005 || k !== 'other').map(([k, n]) => `<div class="payer"><span class="sw" style="background:var(--${k})"></span><span>${n}</span><span class="num">${aud0(T[k])}</span><span class="pc">${T.total ? pctTxt(T[k] / T.total) : ''}</span></div>`).join('');
+  const kinds = Engine.breakdown(PW, I), kmax = kinds.length ? kinds[0][1] : 1;
+  $('kinds').innerHTML = kinds.length ? kinds.map(([k, v]) => `<div class="kind"><span>${esc(k)}</span><span class="track"><i style="width:${(v / kmax * 100).toFixed(1)}%;background:${kindColour(k)}"></i></span><span class="num" style="text-align:right">${aud0(v)}</span></div>`).join('') : '<p class="small muted">Nothing yet.</p>';
+  renderDrivers();
+  renderSteps(byRow, byId);
+  $('addparent').innerHTML = '<option value="">Nothing (first step)</option>' + ordered().map(s => `<option value="${esc(s.id)}">${esc(s.label)}</option>`).join('');
+  $('setname').value = PW.name || ''; $('setpop').value = PW.population || ''; $('sethor').value = PW.horizon || ''; $('setcopay').value = PW.copay === 'concessional' ? 'concessional' : 'general';
+  $('revert').hidden = !(ORIGIN && ORIGIN.type === 'library');
+  $('json').value = JSON.stringify(PW, null, 2);
+  saveCurrent();
+}
+
+const FNAME = { prob: '% of patients', qty: 'number of times', gap: 'gap' };
+const fmtIn = (f, v) => f === 'prob' ? pctTxt(v) : f === 'gap' ? aud0(v) : (+v).toLocaleString('en-AU', { maximumFractionDigits: 1 });
+function renderDrivers() {
+  const t = Engine.tornado(PW, I), bars = t.bars.slice(0, 8);
+  $('drivers').innerHTML = bars.slice(0, 3).map(b => `<li><strong>${esc(b.label)}</strong> (${FNAME[b.field]} ${fmtIn(b.field, b.lo)} to ${fmtIn(b.field, b.hi)}) changes the total from ${aud0(Math.min(b.tLo, b.tHi))} to ${aud0(Math.max(b.tLo, b.tHi))}</li>`).join('') || '<li class="muted">Add low and high values to the steps to see this.</li>';
+  if (!bars.length) { $('tornado').innerHTML = ''; return; }
+  const W = 540, rowH = 26, left = 200, right = 56, top = 20, H = top + bars.length * rowH + 4;
+  const lo = Math.min(t.base, ...bars.map(b => Math.min(b.tLo, b.tHi))), hi = Math.max(t.base, ...bars.map(b => Math.max(b.tLo, b.tHi)));
+  const pad = (hi - lo) * 0.05 || 1, x0 = lo - pad, x1 = hi + pad, X = v => left + (v - x0) / (x1 - x0) * (W - left - right);
+  let s = `<svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="How much each assumption moves the total">`;
+  s += `<line x1="${X(t.base)}" x2="${X(t.base)}" y1="${top - 4}" y2="${H}" stroke="var(--ink)" stroke-width="1" opacity="0.6"/><text x="${X(t.base)}" y="11" text-anchor="middle">${aud0(t.base)}</text>`;
+  bars.forEach((b, i) => {
+    const y = top + i * rowH, a = X(Math.min(b.tLo, b.tHi)), c = X(Math.max(b.tLo, b.tHi));
+    const nm = (b.label || b.id), name = nm.length > 19 ? nm.slice(0, 18).trim() + '…' : nm;
+    s += `<text x="${left - 8}" y="${y + 13}" text-anchor="end">${esc(name)}, ${b.field === 'prob' ? '%' : b.field === 'qty' ? 'times' : 'gap'}</text>`;
+    s += `<rect x="${a}" y="${y + 3}" width="${Math.max(2, c - a)}" height="14" rx="3" fill="#7c93ab"><title>${esc(nm)}: ${aud0(Math.min(b.tLo, b.tHi))} to ${aud0(Math.max(b.tLo, b.tHi))}</title></rect>`;
+    s += `<text x="${c + 4}" y="${y + 14}" style="font-size:11px">+${aud0(Math.max(b.tLo, b.tHi) - t.base)}</text>`;
+  });
+  $('tornado').innerHTML = s + '</svg>';
+}
+
+function renderSteps(byRow, byId) {
+  if (!PW.steps.length) { $('steps').innerHTML = '<div class="empty">No steps yet. Use the search below to add one.</div>'; return; }
+  $('steps').innerHTML = ordered().map(s => {
+    const row = byRow.get(s.id), u = row.unit, d = depthOf(s, byId), open = openRows.has(s.id);
+    const kind = u.error ? 'Other' : Engine.kindOf(s, I);
+    const times = row.qty === 1 ? '' : `, ${(+row.qty).toLocaleString('en-AU', { maximumFractionDigits: 1 })} times`;
+    return `<div class="step${open ? ' open' : ''}${u.error ? ' err' : ''}" data-id="${esc(s.id)}">
+      <button class="stephead" data-act="toggle" aria-expanded="${open}">
+        <span class="lab">${d ? `<span class="indent" style="width:${d * 16}px;border-left:none"></span>` : ''}<span class="dot" style="background:${kindColour(kind)}" title="${esc(kind)}"></span><span><span class="t">${esc(s.label)}</span><span class="n">${u.error ? `<span class="err">${esc(u.error)}</span>` : esc(s.note || codeLabel(s))}</span></span></span>
+        <span class="who">${pctTxt(row.eff)} of patients${times}</span>
+        <span class="ec">${aud0(row.total)}</span>
+        <span class="chev" aria-hidden="true">›</span>
+      </button>
+      ${open ? editor(s, u) : ''}
+    </div>`;
+  }).join('');
+}
+
+function trio(s, f, scale, step) {
+  const o = s[f] || {}, v = x => x == null || x === '' ? '' : +(x * scale).toFixed(4);
+  return `<div class="trio"><label>Low<input type="number" step="${step}" data-f="${f}.lo" data-scale="${scale}" value="${v(o.lo)}"></label><label>Base<input type="number" step="${step}" data-f="${f}.v" data-scale="${scale}" value="${v(o.v)}"></label><label>High<input type="number" step="${step}" data-f="${f}.hi" data-scale="${scale}" value="${v(o.hi)}"></label></div>`;
+}
+function evrow(s, f) {
+  const o = s[f] || {}, ev = o.ev || 'estimate';
+  return `<label>Evidence <select data-f="${f}.ev">${Object.keys(EVLAB).map(e => `<option value="${e}" ${e === ev ? 'selected' : ''}>${EVLAB[e]}</option>`).join('')}</select></label><label>Reference <input type="text" data-f="${f}.ref" value="${esc(o.ref)}" placeholder="Where this number comes from"></label>`;
+}
+function editor(s, u) {
+  const p = s.price || {};
+  let price = '';
+  if (p.type === 'mbs' && u.ref) price = `<strong>MBS item ${esc(p.code)}</strong> · schedule fee ${aud(u.ref.fee)} · Medicare pays ${aud(u.medicare)} (${esc(u.basis)})<span class="desc">${esc(cleanDesc(u.ref.desc))}</span>`;
+  else if (p.type === 'pbs' && u.ref) price = `<strong>PBS ${esc(p.code)}</strong> · ${esc(u.ref.drug)}, ${esc(u.ref.form)} · up to ${u.ref.maxqty} units, ${u.ref.repeats} repeats<span class="desc">Dispensed price ${aud(u.ref.dpmq)} per script; PBS pays ${aud(u.pbs)}, patient pays ${aud(u.patient - (+((s.gap || {}).v) || 0))}. Count each dispensing, including repeats.</span>`;
+  else if (p.type === 'hosp' && u.ref) price = `<strong>${esc(p.code)}</strong> · ${esc(u.ref.desc)}<span class="desc">Price weight ${u.weight.toFixed(4)} (${esc(u.basis)}) × $7,418 = ${aud(u.hospital)}${u.ref.alos ? ' · average stay ' + u.ref.alos + ' days' : ''}</span>`;
+  else if (p.type === 'manual') price = `<label>Amount per service ($)<input type="number" step="any" data-f="price.amount" value="${p.amount ?? 0}"></label><label>Where the amount comes from<input type="text" data-f="price.ref" value="${esc(p.ref)}"></label>`;
+  else price = `<span class="err">${esc(u.error || 'No price')}</span>`;
+  let opts = '';
+  if (p.type === 'mbs') opts = `<label>Setting <select data-f="price.setting"><option value="out" ${p.setting !== 'in' ? 'selected' : ''}>Outside hospital</option><option value="in" ${p.setting === 'in' ? 'selected' : ''}>Private patient in hospital</option></select></label>`;
+  if (p.type === 'hosp') opts = `<label>Basis <select data-f="price.basis"><option value="inlier" ${p.basis !== 'same_day' ? 'selected' : ''}>Typical stay</option><option value="same_day" ${p.basis === 'same_day' ? 'selected' : ''}>Same day</option></select></label><label style="display:flex;gap:6px;align-items:center"><input type="checkbox" data-f="price.paed" ${p.paed ? 'checked' : ''}> Paediatric adjustment</label>`;
+  const others = ordered().filter(o => o.id !== s.id);
+  return `<div class="editor">
+    <div class="fields">
+      <fieldset class="fset"><legend>% of patients</legend>${trio(s, 'prob', 100, 1)}${evrow(s, 'prob')}</fieldset>
+      <fieldset class="fset"><legend>Number of times</legend>${trio(s, 'qty', 1, 'any')}${evrow(s, 'qty')}</fieldset>
+      <fieldset class="fset"><legend>Gap charged ($ per time)</legend>${trio(s, 'gap', 1, 10)}${evrow(s, 'gap')}</fieldset>
+    </div>
+    <div class="pricebox">${price}</div>
+    <div class="row">
+      <label class="small muted">Name <input type="text" data-f="label" value="${esc(s.label)}"></label>
+      <label class="small muted">Note <input type="text" data-f="note" value="${esc(s.note)}" style="min-width:260px"></label>
+      <label class="small muted">Comes after <select data-f="parent"><option value="">Nothing (first step)</option>${others.map(o => `<option value="${esc(o.id)}" ${o.id === s.parent ? 'selected' : ''}>${esc(o.label)}</option>`).join('')}</select></label>
+      ${opts}
+      <button class="linkbtn" data-act="del" style="color:var(--bad);margin-left:auto">Delete step</button>
+    </div>
+  </div>`;
+}
+function setPath(obj, path, val) { const ks = path.split('.'); let o = obj; for (let i = 0; i < ks.length - 1; i++) { if (!o[ks[i]] || typeof o[ks[i]] !== 'object') o[ks[i]] = {}; o = o[ks[i]]; } o[ks[ks.length - 1]] = val; }
+$('steps').addEventListener('change', e => {
+  const el = e.target, st = el.closest('.step'), f = el.dataset.f; if (!st || !f) return;
+  const s = PW.steps.find(x => x.id === st.dataset.id); if (!s) return;
+  let v = el.type === 'checkbox' ? el.checked : el.value;
+  if (el.type === 'number') v = v === '' ? null : parseFloat(v) / (+el.dataset.scale || 1);
+  if (f === 'parent') v = v || null;
+  setPath(s, f, v);
+  const m = f.match(/^(prob|qty|gap)\.(v|lo|hi)$/);
+  if (m && v != null) { const o = s[m[1]]; if (m[2] === 'v') { if (o.hi == null || o.hi < v) o.hi = v; if (o.lo == null || o.lo > v) o.lo = v; } if (m[1] === 'prob') { o.v = Math.min(1, Math.max(0, o.v)); o.lo = Math.min(1, Math.max(0, o.lo)); o.hi = Math.min(1, Math.max(0, o.hi)); } }
+  renderPathway();
+});
+$('steps').addEventListener('click', e => {
+  const b = e.target.closest('[data-act]'); if (!b) return;
+  const id = b.closest('.step').dataset.id;
+  if (b.dataset.act === 'toggle') { openRows.has(id) ? openRows.delete(id) : openRows.add(id); renderPathway(); }
+  if (b.dataset.act === 'del') { const s = PW.steps.find(x => x.id === id); PW.steps = PW.steps.filter(x => x.id !== id); PW.steps.forEach(x => { if (x.parent === id) x.parent = s ? s.parent : null; }); renderPathway(); toast('Step deleted.'); }
+});
+for (const [id, k] of [['setname', 'name'], ['setpop', 'population'], ['sethor', 'horizon'], ['setcopay', 'copay']]) $(id).addEventListener('change', e => { PW[k] = e.target.value; renderPathway(); });
+
+/* Add a service */
+function newId(base) { const id = String(base).toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 20) || 'step', ids = new Set(PW.steps.map(s => s.id)); let out = id, n = 1; while (ids.has(out)) out = id + '-' + (++n); return out; }
+function addStep(label, price, idBase) {
+  const s = { id: newId(idBase), label, note: '', parent: $('addparent').value || null, price,
+    prob: { v: 1, lo: 1, hi: 1, ev: 'estimate', ref: '' }, qty: { v: 1, lo: 1, hi: 1, ev: 'estimate', ref: '' }, gap: { v: 0, lo: 0, hi: 0, ev: 'estimate', ref: '' } };
+  PW.steps.push(s); openRows.add(s.id); $('results').innerHTML = ''; $('addq').value = ''; renderPathway();
+  const el = document.querySelector(`.step[data-id="${CSS.escape(s.id)}"]`); if (el) el.scrollIntoView({ block: 'center', behavior: reduceMotion() ? 'auto' : 'smooth' });
+}
+$('addq').addEventListener('input', e => {
+  const q = e.target.value.trim(); if (q.length < 2) { $('results').innerHTML = ''; return; }
+  const m = searchSource('mbs', q, 8), p = searchSource('pbs', q, 8), h = searchSource('hosp', q, 8);
+  const rows = [...m.map(x => ['mbs', x]), ...p.map(x => ['pbs', x]), ...h.map(x => ['hosp', x])];
+  $('results').innerHTML = rows.length ? rows.map(([t, x]) => t === 'mbs'
+    ? `<div class="res"><span class="c">MBS ${esc(x.code)}</span><span>${esc(x.description)}<span class="k"> · MBS</span></span><span class="p">${x.schedule_fee == null ? 'varies' : aud0(x.schedule_fee)}</span><button class="btn plain" data-add="mbs|${esc(x.code)}">Add</button></div>`
+    : t === 'pbs' ? `<div class="res"><span class="c">PBS ${esc(x.code)}</span><span>${esc(x.medicine)}<span class="k"> · ${x.max_quantity} units, ${x.repeats} repeats</span></span><span class="p">${aud0(x.dpmq)}</span><button class="btn plain" data-add="pbs|${esc(x.code)}|${esc(x.program)}">Add</button></div>`
+    : `<div class="res"><span class="c">${esc(x.code)}</span><span>${esc(x.description)}<span class="k"> · ${esc(x.class)}</span></span><span class="p">${aud0(x.price_inlier)}</span><button class="btn plain" data-add="hosp|${esc(x.code)}">Add</button></div>`).join('')
+    : '<div class="res"><span></span><span class="muted">No matches. Try different words.</span></div>';
+});
+$('results').addEventListener('click', e => {
+  const b = e.target.closest('[data-add]'); if (!b) return;
+  const [t, code, prog] = b.dataset.add.split('|');
+  if (t === 'mbs') addStep(cleanDesc(I.mbs.get(code).desc).split(/[,;(]/)[0].slice(0, 60), { type: 'mbs', code, setting: 'out' }, 'mbs-' + code);
+  else if (t === 'pbs') { const d = I.pbs.get(code + '|' + prog); addStep(d.drug + ' ' + d.form.split(' (')[0], { type: 'pbs', code, prog }, 'pbs-' + code); }
+  else { const h = I.hosp.get(code); addStep(h.desc.slice(0, 60), { type: 'hosp', code, basis: 'inlier', paed: false }, code); }
+});
+$('addmanual').addEventListener('click', () => addStep('Other cost', { type: 'manual', amount: 0, ref: '' }, 'other'));
+
+/* Export */
+function toast(msg, bad) { const t = $('toast'); t.textContent = msg; t.style.color = bad ? 'var(--bad)' : 'var(--good)'; }
+async function copy(text, msg) { try { await navigator.clipboard.writeText(text); toast(msg); } catch (e) { $('json').closest('details').open = true; $('json').value = text; $('json').select(); toast("Couldn't copy automatically. The text is in the box below, copy it from there.", true); } }
+$('save').addEventListener('click', () => { libPut(PW); toast('Saved.'); });
+$('revert').addEventListener('click', () => { const c = (DATA[ORIGIN.spec || 'heart'] || []).find(x => x.id === ORIGIN.id); if (c) { PW = clone(c.pathway); openRows = new Set(); renderPathway(); toast('Reset to the original numbers.'); } });
+$('copysum').addEventListener('click', () => {
+  const T = Engine.evaluate(PW, I).totals, s = Engine.simulate(PW, I, 600), k = Engine.breakdown(PW, I), d = Engine.tornado(PW, I).bars.slice(0, 3);
+  const lines = [PW.name, [PW.population, PW.horizon].filter(Boolean).join(', '), '',
+    `Cost per patient: ${aud0(T.total)} (range ${aud0(s.p10)} to ${aud0(s.p90)})`,
+    'Who pays: ' + PAYERS.filter(([x]) => T[x] > 0.5).map(([x, n]) => `${n} ${aud0(T[x])}`).join('; '),
+    'Biggest parts: ' + k.slice(0, 4).map(([n, v]) => `${n} ${aud0(v)}`).join('; '),
+    'Biggest drivers: ' + d.map(b => `${b.label} ${FNAME[b.field]}`).join('; '),
+    `${pctTxt(T.estimateShare)} of the cost is based on estimates.`, '',
+    'Prices: MBS and PBS November 2026, IHACPA NEP 2026–27 ($7,418 per NWAU).'];
+  copy(lines.join('\n'), 'Summary copied.');
+});
+$('copytable').addEventListener('click', () => {
+  const r = Engine.evaluate(PW, I), byRow = new Map(r.rows.map(x => [x.id, x]));
+  const L = [['Step', 'Code', 'Type of care', 'Share of patients', 'Times', 'Unit price', 'Medicare', 'PBS', 'Patient', 'Public hospital', 'Other', 'Expected cost'].join('\t')];
+  for (const s of ordered()) { const x = byRow.get(s.id), u = x.unit; if (u.error) { L.push([s.label, codeLabel(s), 'error: ' + u.error].join('\t')); continue; }
+    L.push([s.label, codeLabel(s), Engine.kindOf(s, I), (x.eff * 100).toFixed(1) + '%', x.qty, (u.medicare + u.pbs + u.patient + u.hospital + u.other).toFixed(2), x.medicare.toFixed(2), x.pbs.toFixed(2), x.patient.toFixed(2), x.hospital.toFixed(2), x.other.toFixed(2), x.total.toFixed(2)].join('\t')); }
+  L.push(['Total', '', '', '', '', '', r.totals.medicare.toFixed(2), r.totals.pbs.toFixed(2), r.totals.patient.toFixed(2), r.totals.hospital.toFixed(2), r.totals.other.toFixed(2), r.totals.total.toFixed(2)].join('\t'));
+  copy(L.join('\n'), 'Table copied. Paste it into Excel or Sheets.');
+});
+$('copycheck').addEventListener('click', () => {
+  const r = Engine.evaluate(PW, I), byRow = new Map(r.rows.map(x => [x.id, x]));
+  const L = [['Step', 'Source file', 'Code', 'Price used', 'Share of patients', 'Share evidence', 'Share reference', 'Times', 'Times evidence', 'Checked against', 'Price correct (Y/N)', 'Share supported (Y/N)', 'Times supported (Y/N)', 'Notes'].join('\t')];
+  for (const s of ordered()) { const u = byRow.get(s.id).unit, p = s.price || {};
+    const file = p.type === 'mbs' ? 'MBS November 2026' : p.type === 'pbs' ? 'PBS November 2026' : p.type === 'hosp' ? 'IHACPA NEP 2026–27 price weights' : 'Manual';
+    const pr = u.error ? u.error : p.type === 'mbs' ? 'Fee ' + u.fee + ', benefit ' + u.medicare : p.type === 'pbs' ? 'DPMQ ' + u.fee : p.type === 'hosp' ? 'Weight ' + u.weight.toFixed(4) + ' = ' + u.hospital : 'Amount ' + u.other;
+    L.push([s.label, file, p.code || '', pr, ((s.prob || {}).v * 100).toFixed(1) + '%', (s.prob || {}).ev || '', (s.prob || {}).ref || '', (s.qty || {}).v, (s.qty || {}).ev || '', '', '', '', '', ''].join('\t')); }
+  copy(L.join('\n'), 'Checklist copied. Paste it into a spreadsheet and fill in the blank columns.');
+});
+$('copyjson').addEventListener('click', () => copy(JSON.stringify(PW, null, 2), 'Pathway file copied.'));
+$('loadjson').addEventListener('click', () => {
+  let o; try { o = JSON.parse($('json').value); } catch (e) { toast("That doesn't look like valid JSON: " + e.message, true); return; }
+  if (!o || !Array.isArray(o.steps)) { toast('That JSON has no "steps" list.', true); return; }
+  PW = o; ORIGIN = { type: 'loaded' }; openRows = new Set(); renderPathway();
+  const n = Engine.validate(PW, I).filter(i => i.level === 'error').length;
+  toast(n ? `Loaded, but ${n} code${n > 1 ? 's are' : ' is'} invalid (red steps).` : 'Loaded.', n > 0);
+});
+
+/* ---------- Search over the price files ---------- */
+function cleanDesc(d) { return d.replace(/^(Note:[^]*?(\(R\)|\.)\s+)+/, '').replace(/\s+/g, ' '); }
+function searchSource(source, text, n) {
+  const q = String(text || '').toLowerCase().trim(); if (!q) return [];
+  const words = q.split(/\s+/).filter(w => w.length > 1), need = Math.max(1, Math.ceil(words.length * 0.6));
+  const pool = source === 'mbs' ? mbs : source === 'pbs' ? pbsList : hosp;
+  const scored = [];
+  for (const x of pool) {
+    const code = (x.item || x.code || '').toLowerCase();
+    let sc = code === q ? 100 : 0;
+    for (const w of words) { const at = x.lc.indexOf(w); if (at >= 0) { sc++; if (at < 90) sc += 0.4; } }
+    if (sc >= need) scored.push([sc, x]);
+  }
+  scored.sort((a, b) => b[0] - a[0] || (a[1].lc.length - b[1].lc.length));
+  return scored.slice(0, n).map(([, x]) => source === 'mbs'
+    ? { code: x.item, description: cleanDesc(x.desc).slice(0, 190), schedule_fee: x.fee, benefit_out_of_hospital: x.b100 ?? x.b85, benefit_in_hospital: x.b75 }
+    : source === 'pbs' ? { code: x.code, program: x.prog, medicine: x.drug + ', ' + x.form, max_quantity: x.maxqty, repeats: x.repeats, dpmq: x.dpmq }
+    : { code: x.code, class: x.stream, description: x.desc, price_inlier: x.price, price_same_day: x.sdPrice, average_stay_days: x.alos });
+}
+
+/* ---------- Start ---------- */
+(async function init() {
+  try {
+    const [P, PB, HT, NT] = await Promise.all(['prices.json', 'pbs.json', 'heart.json', 'neuro.json'].map(f => fetch(f).then(r => { if (!r.ok) throw new Error(f + ' ' + r.status); return r.json(); })));
+    I = Engine.indexPrices(P, PB); DATA = { heart: HT, neurology: NT };
+    mbs = [...I.mbs.values()].map(m => Object.assign({ lc: (m.item + ' ' + m.desc).toLowerCase() }, m));
+    hosp = [...I.hosp.values()].map(h => Object.assign({ lc: (h.code + ' ' + h.desc).toLowerCase() }, h));
+    pbsList = PB.items.map(r => ({ code: r[0], prog: r[1], drug: r[2], form: r[3], maxqty: r[4], repeats: r[5], dpmq: r[6], lc: (r[0] + ' ' + r[2] + ' ' + r[3]).toLowerCase() }));
+    $('ver').textContent = 'Prices as of November 2026';
+    $('srctable').innerHTML = `<tr><th>Source</th><th>Version</th><th>Used for</th><th>Items</th></tr>
+      <tr><td>Medicare Benefits Schedule XML</td><td>November 2026</td><td>Doctor visits, tests, scans and procedures</td><td class="num">${I.mbs.size.toLocaleString('en-AU')}</td></tr>
+      <tr><td>PBS API CSV files</td><td>November 2026</td><td>Medicines</td><td class="num">${PB.items.length.toLocaleString('en-AU')}</td></tr>
+      <tr><td>IHACPA National Efficient Price Determination</td><td>2026–27, $7,418 per NWAU(26)</td><td>Hospital stays, ED visits and outpatient clinics</td><td class="num">${I.hosp.size.toLocaleString('en-AU')}</td></tr>`;
+    computeHeart();
+    const cur = store.get('pc-current-v2', null);
+    if (cur && cur.pw && Array.isArray(cur.pw.steps)) { PW = cur.pw; ORIGIN = cur.origin; }
+    route();
+  } catch (e) { document.querySelector('main').insertAdjacentHTML('afterbegin', `<p class="err">The price files did not load (${esc(e.message)}). Reload the page.</p>`); }
+})();
+</script>
+</body>
+</html>
